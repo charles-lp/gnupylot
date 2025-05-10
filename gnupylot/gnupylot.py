@@ -6,33 +6,32 @@ import tempfile as tmp
 
 class Figure(object):
 
-    def __init__(self, verbose=False, replot=True, interactive=True):
+    def __init__(self, verbose=False, replot=False, interactive=True):
         """
-        Constructor for Figure class.
-
         Parameters
         ----------
-        verbose : bool, optional
-            Default is False. If True, prints every gnuplot command to stdout.
-        replot : bool, optional
-            Default is True. If True, will add subsequent plot satements to the same 
-            figure. Else, the figure is overwritten
-        interactive : bool, optional
-            Default is True. If True, show() will pause script until user presses
-            enter. Can be set to False if output terminal is non-interactive.
+        verbose : bool
+            If set to True, commands sent to gnuplot are printed to the console.
+        replot : bool
+            If set to True, subsequent plot commands will replot the same figure 
+            window, rather than creating a new one.
+        interactive : bool
+            If set to False, script execution will not pause after showing a figure.
         """
+        
+        self.command = b""
         self._process = sub.Popen(
             ["gnuplot"], 
             stdin=sub.PIPE, 
             # stdout=sub.PIPE, 
             # stderr=sub.PIPE
         )
-        self.plot_count = 0
         self._data_files = []
+        self._replot_active = False
 
         self.verbose = verbose
-        self.replot = replot
         self.interactive = interactive
+        self.replot = replot 
 
     def show(self):
         """
@@ -42,13 +41,15 @@ class Figure(object):
         (i.e., script execution is paused) if interactive was set to True
         when the Figure object was created.
         """
+        if self.verbose: print(self.command)
+        self._process.stdin.write(self.command)
         self._process.stdin.flush()
         if self.interactive: input()
 
     def _command(self, command):
         if not isinstance(command, str): raise TypeError()
         if self.verbose: print(command)
-        self._process.stdin.write(command.encode() + b"\n")
+        self.command += command.encode() + b"\n"
 
     def set(self, setting):
         """
@@ -61,6 +62,17 @@ class Figure(object):
         """
         self._command("set " + setting)
 
+    def unset(self, setting):
+        """
+        Sends a "unset" command to gnuplot.
+
+        Parameters
+        ----------
+        setting : str
+            The setting string to send to gnuplot, e.g. "border", "tics", "key", etc.
+        """
+        self._command("unset " + setting)
+
     def command(self, command):
         """
         Sends a custom command to the gnuplot process.
@@ -70,7 +82,6 @@ class Figure(object):
         command : str
             The command string to send to gnuplot.
         """
-
         self._command(command)
 
     def _save(self, *args):
@@ -87,76 +98,122 @@ class Figure(object):
         self._data_files[-1].flush()
         return self._data_files[-1].name
 
-    def plot(self, x, *args, **kwargs):
+    def plot(self, x, y=None, *args, **kwargs):
         """
-        Sends a "plot" or "replot" command to the gnuplot process.
+        Plot a 2D graph
 
         Parameters
         ----------
         x : str or array-like
-            The x data to plot. If a string, it will be passed directly to gnuplot
-            as a command. If an array-like, it will be saved to a temporary file
-            and passed to gnuplot as a file name.
+            The x values to plot. If a string, it should be a valid gnuplot command
+            (e.g. "'sin(x)'"). If an array-like, it should be an array of x values to
+            plot. If only one array-like is provided, it is plotted against its index.
+        y : array-like, optional
+            The y values to plot. Should be an array of the same length as x.
         *args : str
-            Unnamed string arguments will be passed to gnuplot verbatim.
+            Additional arguments to pass to the gnuplot "plot" command.
         **kwargs : str
-            Named string arguments will be passed to gnuplot as options. For example,
-            y="sin(x)" or title="My Plot".
+            Additional keyword arguments to pass to the gnuplot "plot" command.
 
-        Notes
-        -----
-        If x is an array-like, then the first argument (if present) will be used as the
-        y data. If the first argument is not present, or if the y keyword is given,
-        then the y data must be given by the y keyword argument.
-
-        Examples
-        --------
-        >>> fig.plot("sin(x)")
-        >>> fig.plot(np.array([1,2,3]), np.array([1,2,3])**2, "u 1:2 w lp")
-        >>> fig.plot(x=np.array([1,2,3]), y=np.array([1,2,3])**2, title="My Plot")
+        Returns
+        -------
+        None
         """
         command = ""
 
-        # Check for replot
-        if self.plot_count > 0 and self.replot:
+        if self.replot and self._replot_active:
             command += "replot "
         else:
             command += "plot "
 
         # Check if x is a string command or array-like
         if x is None: raise ValueError()
-        array_style = False
+        x_array_like = False
         if isinstance(x, str):
             command += x + " "
         else:
-            array_style = True
+            x_array_like = True
 
         # Check if y is array-like depending on what x is
-        skip_first_arg = False
-        if array_style:
-            if kwargs.get("y") is not None:
-                data_file_name = self._save(x, kwargs["y"])
+        if x_array_like:
+            if y is not None:
+                data_file_name = self._save(x, y)
                 command += f"'{data_file_name}' "
             elif args[0] is not None:
                 data_file_name = self._save(x, args[0])
                 command += f"'{data_file_name}' "
-                skip_first_arg = True
+                args = tuple(args[i] for i in range(1, len(args)))
             else:
                 raise ValueError()
 
-        # Set unnamed string args
-        for argI,arg in enumerate(args):
-            if skip_first_arg and argI == 0: continue
-            if not isinstance(arg, str): raise TypeError()
-            command += arg + " "
+        # Set unamed args
+        for arg in args:
+            command += f"{arg} "
 
         # Set named args
         for key,value in kwargs.items():
-            pass
+            command += f"{key} {value} "
 
         # Send command
         self._command(command)
-        self.plot_count += 1
+        self._replot_active = True
+
+    def splot(self, x, y=None, z=None, *args, **kwargs):
+        """
+        Plot a 3D graph or surface plot
+
+        Parameters
+        ----------
+        x : array-like or str
+            If array-like, the x values to plot. If str, a string command
+            to send to gnuplot. Requires y and z arguments.
+        y : array-like, optional
+            The y values to plot. Ignored if x is a string.
+        z : array-like, optional
+            The z values to plot. Ignored if x is a string.
+        *args : array-like, optional
+            Additional array-like arguments to send to gnuplot.
+        **kwargs : str, optional
+            Additional string arguments to send to gnuplot.
+        """
+        command = ""
+
+        if self.replot and self._replot_active:
+            command += "replot "
+        else:
+            command += "splot "
+
+        # Check if x is a string command or array-like
+        if x is None: raise ValueError()
+        x_array_like = False
+        if isinstance(x, str):
+            command += x + " "
+        else:
+            x_array_like = True
+
+        # Check if y is array-like depending on what x is
+        if x_array_like:
+            if y is not None and z is not None:
+                data_file_name = self._save(x, y)
+                command += f"'{data_file_name}' "
+            elif args[0] is not None and args[1] is not None:
+                data_file_name = self._save(x, args[0])
+                command += f"'{data_file_name}' "
+                args = tuple(args[i] for i in range(2, len(args)))
+            else:
+                raise ValueError()
+
+        # Set unamed args
+        for arg in args:
+            command += f"{arg} "
+
+        # Set named args
+        for key,value in kwargs.items():
+            command += f"{key} {value} "
+
+        # Send command
+        self._command(command)
+        self._replot_active = True
 
     def __enter__(self):
         return self
@@ -177,40 +234,34 @@ class Figure(object):
         self.close()
 
 
-def show(*args):
+def show(*args, interactive=True):
     """
-    Shows the specified figures.
+    Shows all figures given as arguments.
 
-    Flushes the stdin of each figure's gnuplot process and waits for user input
-    to continue. This pauses script execution, allowing the user to view the
-    figures.
-    
     Parameters
     ----------
     *args : Figure
-        One or more Figure objects to be shown.
+        The figures to show.
+    interactive : bool, optional
+        If set to True (default), script execution will pause after showing
+        all figures.
     """
-
-    for fig in args:
-        fig._process.stdin.flush()
-    input()
+    fig._process.stdin.write(fig.command)
+    fig._process.stdin.flush()
+    if interactive: input()
 
 if __name__ == "__main__":
 
     with Figure() as fig:
+        fig.replot = True
         fig.set("grid")
         fig.set("key outside top horizontal")
         fig.plot("cos(x)", "w p")
-        fig.plot("sin(x)")
-        fig.plot([0,1,3],[0,2,6], "u 1:2 w lp")
+        fig.plot("sin(x)", w="lines")
+        fig.plot([0,1,3],[0,2,6], "w boxes", linewidth=3)
+        fig.plot(x=[0,1,3],y=[0,0.5,0.33], w="lines")
         fig.show()
 
-    # with Figure() as fig:
-    #     import numpy as np
-    #     fig.plot(np.array([1,2,3,4,5]), np.array([1,2,3,4,5])**2, "u 1:2 w l")
-    #     fig.show()
-
-    # with Figure() as f1, Figure() as f2:
-    #     f1.plot("log(x)", "w l")
-    #     f2.plot("log(x**2)", "w l")
-    #     show(f1, f2)
+    with Figure() as fig:
+        fig.splot("sin(x)*sin(y)", linecolor="black")
+        fig.show()
