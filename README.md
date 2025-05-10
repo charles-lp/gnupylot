@@ -14,6 +14,8 @@ A basic Matplotlib-like Python wrapper for gnuplot
 
 Using standard gnuplot syntax:
 ```python
+from gnupylot import Figure
+
 with Figure() as fig:
     fig.replot = True
     fig.set("grid")
@@ -25,6 +27,8 @@ with Figure() as fig:
 
 Using Matplotlib-like syntax:
 ```python
+from gnupylot import Figure
+
 with Figure() as fig:
     fig.replot = True
     fig.set("grid")
@@ -36,6 +40,8 @@ with Figure() as fig:
 
 Plot multiple figures at once:
 ```python
+from gnupylot import Figure, show
+
 with Figure() as fig1, Figure() as fig2:
     fig1.plot("x**2")
 
