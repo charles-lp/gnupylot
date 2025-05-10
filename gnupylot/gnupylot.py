@@ -246,22 +246,25 @@ def show(*args, interactive=True):
         If set to True (default), script execution will pause after showing
         all figures.
     """
-    fig._process.stdin.write(fig.command)
-    fig._process.stdin.flush()
+    for fig in args:
+        fig._process.stdin.write(fig.command)
+        fig._process.stdin.flush()
     if interactive: input()
 
 if __name__ == "__main__":
-
     with Figure() as fig:
         fig.replot = True
         fig.set("grid")
         fig.set("key outside top horizontal")
-        fig.plot("cos(x)", "w p")
-        fig.plot("sin(x)", w="lines")
-        fig.plot([0,1,3],[0,2,6], "w boxes", linewidth=3)
-        fig.plot(x=[0,1,3],y=[0,0.5,0.33], w="lines")
+        fig.plot("sin(x)", dashtype=0)
+        fig.plot(x=[0,1], y=[0,0.5], w="lines", linecolor=" 'red'")
         fig.show()
 
-    with Figure() as fig:
-        fig.splot("sin(x)*sin(y)", linecolor="black")
-        fig.show()
+    with Figure() as fig1, Figure() as fig2:
+        fig1.plot("x**2")
+
+        fig2.set("hidden3d")
+        fig2.set("isosamples 50")
+        fig2.splot("sin(x)*cos(y)")
+
+        show(fig1, fig2)
