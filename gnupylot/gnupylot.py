@@ -228,6 +228,12 @@ class Figure(object):
         Does not block until process terminates, but instead returns immediately.
         """
         self._close_data_files()
+
+        # Necessary to ask gnuplot directly to quit, else the window might stay opened
+        # even after SIGTERM/SIGKILL is sent
+        self._process.stdin.write("q\n")
+        self._process.stdin.flush()
+        
         self._process.terminate()
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
