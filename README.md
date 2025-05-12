@@ -52,5 +52,5 @@ with Figure() as fig1, Figure() as fig2:
     show(fig1, fig2)
 ```
 
-## Known issues
-- Depending on the windowing system, gnuplot windows may remain displayed even after the gnuplot process is terminated and have to be closed manually.
+## Caveats
+- When showing an `interactive` figure, the `Figure:show()` command blocks execution until the `enter` key is pressed. This behavior could be improved in the future.
